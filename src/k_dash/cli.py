@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .builder import DEFAULT_BUILDER_IMAGE
+from .builder import DEFAULT_BUILDER_IMAGE, nix_max_jobs
 from .cache import Cache
 from .model import DEFAULT_TVM_FFI_VERSION
 from .errors import KDashError
@@ -19,6 +19,13 @@ from .templates import init_project
 
 def _path(value: str) -> Path:
     return Path(value).expanduser()
+
+
+def _jobs(value: str) -> str:
+    try:
+        return nix_max_jobs(value)
+    except KDashError as error:
+        raise argparse.ArgumentTypeError("must be a non-negative integer or auto") from error
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -42,6 +49,13 @@ def _parser() -> argparse.ArgumentParser:
         "--local-jit",
         action="store_true",
         help="build with the host Nix daemon instead of a Docker builder",
+    )
+    build.add_argument(
+        "-j",
+        "--jobs",
+        type=_jobs,
+        metavar="N",
+        help="Nix build parallelism, forwarded as nix build --max-jobs (non-negative integer or auto)",
     )
 
     publish = subcommands.add_parser("publish", help="publish source and optional AOT builds")
@@ -100,7 +114,7 @@ def _run(args: argparse.Namespace) -> Any:
         results = local_build(
             Path.cwd(), version=args.version, cuda=args.cuda_version, cc=args.cc,
             args_files=args.args, builder_image=args.builder_image, tvm_ffi=args.tvm_ffi_version,
-            use_local_jit=args.local_jit,
+            use_local_jit=args.local_jit, max_jobs=args.jobs,
         )
         return {
             "builds": [

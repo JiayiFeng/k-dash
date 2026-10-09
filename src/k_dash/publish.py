@@ -73,6 +73,7 @@ def local_build(
     builder_image: str = DEFAULT_BUILDER_IMAGE,
     tvm_ffi: str = DEFAULT_TVM_FFI_VERSION,
     use_local_jit: bool = False,
+    max_jobs: str | None = None,
 ) -> list[tuple[str, Path, bool, str, dict[str, Any]]]:
     version = validate_version(version)
     _, schema = load_project(root)
@@ -96,10 +97,10 @@ def local_build(
             with tempfile.TemporaryDirectory(prefix="k-dash-local-build-") as temporary:
                 source = Path(temporary) / "source"
                 materialize_source_tree(root, source)
-                kernel_so, provenance = local_jit(source, spec)
+                kernel_so, provenance = local_jit(source, spec, max_jobs=max_jobs)
         else:
             kernel_so, provenance = docker_aot(
-                root, spec, builder_image=builder_image
+                root, spec, builder_image=builder_image, max_jobs=max_jobs
             )
         config, _, _, _, _ = build_objects(
             spec,

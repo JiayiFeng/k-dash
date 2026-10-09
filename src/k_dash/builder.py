@@ -18,6 +18,19 @@ from .project import materialize_source_tree
 DEFAULT_BUILDER_IMAGE = "nixos/nix:2.24.9"
 
 
+def nix_max_jobs(value: str) -> str:
+    """Accept Nix ``--max-jobs`` values: a non-negative integer or ``auto``."""
+    if value == "auto" or value.isdigit():
+        return value
+    raise KDashError("Nix job count must be a non-negative integer or auto", stage="build")
+
+
+def _resolved_max_jobs(max_jobs: str | None) -> str:
+    if max_jobs is None:
+        max_jobs = os.environ.get("K_DASH_NIX_MAX_JOBS", "auto")
+    return nix_max_jobs(max_jobs)
+
+
 def _driver_expression(source: Path, spec: BuildSpec, system: str) -> str:
     # Kernel flakes own and lock nixpkgs. build.nix owns its build helpers, so
     # the Release remains self-contained and has no separate kdlib dependency.
@@ -79,7 +92,12 @@ def _nix_system(spec: BuildSpec) -> str:
     return {"x86_64": "x86_64-linux", "aarch64": "aarch64-linux"}[spec.target["arch"]]
 
 
-def local_jit(source: Path, spec: BuildSpec) -> tuple[bytes, dict[str, Any]]:
+def local_jit(
+    source: Path,
+    spec: BuildSpec,
+    *,
+    max_jobs: str | None = None,
+) -> tuple[bytes, dict[str, Any]]:
     if shutil.which("nix") is None:
         raise KDashError("Nix is unavailable after Binary Miss", stage="local-jit")
     with tempfile.TemporaryDirectory(prefix="k-dash-jit-") as temporary:
@@ -93,7 +111,7 @@ def local_jit(source: Path, spec: BuildSpec) -> tuple[bytes, dict[str, Any]]:
             "NIX_CONFIG": "experimental-features = nix-command flakes\nsandbox = true\npure-eval = true",
         }
         timeout = int(os.environ.get("K_DASH_JIT_TIMEOUT", "1800"))
-        jobs = os.environ.get("K_DASH_NIX_MAX_JOBS", "auto")
+        jobs = _resolved_max_jobs(max_jobs)
         try:
             command = [
                 "nix", "build", "--no-link", "--print-out-paths", "--max-jobs", jobs,
@@ -122,7 +140,12 @@ def local_jit(source: Path, spec: BuildSpec) -> tuple[bytes, dict[str, Any]]:
         return module.read_bytes(), {"mode": "local-jit", "nix_output": output.name}
 
 
-def nix_aot(source: Path, spec: BuildSpec) -> tuple[bytes, dict[str, Any]]:
+def nix_aot(
+    source: Path,
+    spec: BuildSpec,
+    *,
+    max_jobs: str | None = None,
+) -> tuple[bytes, dict[str, Any]]:
     """Build inside an already isolated CI container without nested namespaces."""
     if shutil.which("nix") is None:
         raise KDashError("Nix is unavailable", stage="nix-aot")
@@ -137,7 +160,7 @@ def nix_aot(source: Path, spec: BuildSpec) -> tuple[bytes, dict[str, Any]]:
         try:
             result = subprocess.run(
                 ["nix", "build", "--no-link", "--print-out-paths", "--max-jobs",
-                 os.environ.get("K_DASH_NIX_MAX_JOBS", "auto"), "--file", str(driver)],
+                 _resolved_max_jobs(max_jobs), "--file", str(driver)],
                 check=True, stdout=subprocess.PIPE, text=True, env=environment,
                 timeout=int(os.environ.get("K_DASH_AOT_TIMEOUT", "1800")),
             )
@@ -150,11 +173,25 @@ def nix_aot(source: Path, spec: BuildSpec) -> tuple[bytes, dict[str, Any]]:
         return module.read_bytes(), {"mode": "nix-aot", "nix_output": output.name}
 
 
+def _docker_nix_script(max_jobs: str | None) -> str:
+    jobs = ""
+    if max_jobs is not None:
+        jobs = f"--max-jobs {nix_max_jobs(max_jobs)} "
+    return (
+        "nix --extra-experimental-features 'nix-command flakes' build "
+        "--option sandbox true --option filter-syscalls false "
+        "--no-link --print-out-paths "
+        f"{jobs}--file /tmp/driver.nix > /tmp/output && "
+        "cp $(tail -n1 /tmp/output)/kernel.so /tmp/kernel.so"
+    )
+
+
 def docker_aot(
     source: Path,
     spec: BuildSpec,
     *,
     builder_image: str = DEFAULT_BUILDER_IMAGE,
+    max_jobs: str | None = None,
 ) -> tuple[bytes, dict[str, Any]]:
     try:
         import docker
@@ -174,13 +211,7 @@ def docker_aot(
         archive = shutil.make_archive(str(temporary_path / "context"), "tar", root_dir=stage, base_dir=".")
         container = client.containers.create(
             builder_image,
-            command=[
-                "sh", "-lc",
-                "nix --extra-experimental-features 'nix-command flakes' build "
-                "--option sandbox true --option filter-syscalls false "
-                "--no-link --print-out-paths --file /tmp/driver.nix > /tmp/output && "
-                "cp $(tail -n1 /tmp/output)/kernel.so /tmp/kernel.so",
-            ],
+            command=["sh", "-lc", _docker_nix_script(max_jobs)],
             platform="linux/amd64" if spec.target["arch"] == "x86_64" else "linux/arm64",
             network_disabled=False,
             user="0:0",

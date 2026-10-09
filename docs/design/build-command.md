@@ -11,10 +11,12 @@ k-dash build \
   --cc sm_100a \
   [--args args1.json] \
   [--args args2.json] \
-  [--builder-image <oci-reference>]
+  [--builder-image <oci-reference>] \
+  [-j N]
 ```
 
 - Version、CUDA Toolkit Version 和 CC 必填。
+- `-j` / `--jobs` 传给构建容器或宿主 Nix 的 `nix build --max-jobs`。值为非负整数或 `auto`；省略时 Docker 路径保持 Nix 默认并行度，宿主 Nix 路径仍读取 `K_DASH_NIX_MAX_JOBS`（默认 `auto`）。
 - `--args` 可以重复；省略时使用 `{}`，随后应用 Args Schema defaults。
 - 每个 Args object 形成独立 BuildSpec，重复 BuildKey 去重。
 - 非 Dev Version 也允许本地使用，但不会在远端占用 Version。
