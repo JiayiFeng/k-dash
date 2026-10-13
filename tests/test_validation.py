@@ -191,10 +191,10 @@ def test_cublas_and_cublaslt_dependencies_are_inferred(
 
 
 def test_tvm_ffi_runtime_version_must_be_exact() -> None:
-    config = {"buildspec": {"target": {"tvm_ffi": "0.1.13.post3"}}}
-    validation.validate_tvm_ffi_runtime(config, "0.1.13.post3")
+    config = {"buildspec": {"target": {"tvm_ffi": "0.1.12"}}}
+    validation.validate_tvm_ffi_runtime(config, "0.1.12")
     with pytest.raises(ArtifactIntegrityError, match="does not match"):
-        validation.validate_tvm_ffi_runtime(config, "0.1.12")
+        validation.validate_tvm_ffi_runtime(config, "0.1.13.post3")
 
 
 def test_aarch64_elf_machine_is_enforced(monkeypatch: pytest.MonkeyPatch) -> None:

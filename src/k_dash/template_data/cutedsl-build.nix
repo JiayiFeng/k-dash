@@ -6,18 +6,18 @@ let
   tvmFfiWheel = pkgs.fetchurl {
     url =
       if target.arch == "x86_64" then
-        "https://files.pythonhosted.org/packages/73/d7/c4c783ee435a03e2afb5744b6deb99d98ade203ee91c04f81ad7bdb51de1/apache_tvm_ffi-0.1.13.post3-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl"
+        "https://files.pythonhosted.org/packages/52/f3/fba607d803cb081be2d66ea51865492b42872898bd271d9bcc3e1ced4ef3/apache_tvm_ffi-0.1.12-cp312-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl"
       else if target.arch == "aarch64" then
-        "https://files.pythonhosted.org/packages/e0/5e/b6c248b0fc142dc19ed4e44e8a11e1c8e991d7854bc707ec8e40b9482103/apache_tvm_ffi-0.1.13.post3-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl"
+        "https://files.pythonhosted.org/packages/9c/20/51d0c31c76bef0f21c11bce0465598d1ea5fdaca22e47a69c29deadeada7/apache_tvm_ffi-0.1.12-cp312-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl"
       else
         throw "unsupported target architecture: ${target.arch}";
     hash =
       if target.arch == "x86_64" then
-        "sha256-2zuMPRja4BxpYtcFKzNf936XswkmPEnskq6iWDb6S5c="
+        "sha256-3ArNfusORR1eP2hq87oLSV/b+XtbVM+aD3cM2v4OaRo="
       else
-        "sha256-c4InirtWIvJx1Q6XrX/7spcP0MuDa+T3CV+8sRaUFYI=";
+        "sha256-insI83fqJmPa4Q4wRfjQIV8DeO6XUJYXSor2OB7rFQQ=";
   };
-  tvmFfi = pkgs.runCommand "apache-tvm-ffi-0.1.13.post3-python313-runtime" {
+  tvmFfi = pkgs.runCommand "apache-tvm-ffi-0.1.12-python313-runtime" {
     nativeBuildInputs = [ pkgs.unzip ];
   } ''
     mkdir -p "$out"

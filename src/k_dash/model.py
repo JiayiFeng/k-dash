@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 
-DEFAULT_TVM_FFI_VERSION = "0.1.13.post3"
+DEFAULT_TVM_FFI_VERSION = "0.1.12"
 
 
 @dataclass(frozen=True)

@@ -109,5 +109,5 @@ def test_explicit_tvm_ffi_version_changes_build_identity():
     from k_dash.model import BuildSpec
     a = target.explicit_target("13.0", "sm_90a", tvm_ffi="0.1.9")
     b = target.explicit_target("13.0", "sm_90a")
-    assert a.tvm_ffi == "0.1.9" and b.tvm_ffi == "0.1.13.post3"
+    assert a.tvm_ffi == "0.1.9" and b.tvm_ffi == "0.1.12"
     assert build_key(BuildSpec("sha256:" + "0" * 64, {}, a.as_dict())) != build_key(BuildSpec("sha256:" + "0" * 64, {}, b.as_dict()))

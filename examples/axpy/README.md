@@ -7,7 +7,7 @@ out[i] = alpha * x[i] + y[i]
 ```
 
 as a CUDA kernel exported from one TVM-FFI `kernel.so` using
-`apache-tvm-ffi==0.1.13.post3`. `block_size` is the static Kernel Arg. The test
+`apache-tvm-ffi==0.1.12`. `block_size` is the static Kernel Arg. The test
 image contains a prevalidated `sm_90a`/CUDA 12.8 cache entry and all Python and
 native dependencies, so its GPU smoke test requires no package download.
 

@@ -64,7 +64,7 @@ finish before any registry upload; failure in either toolkit publishes nothing.
 The Python `publish_release(cuda=...)` accepts either the existing string or
 a list of CUDA version strings. `build` and `publish-build` retain one target.
 
-All build commands accept `--tvm-ffi-version` (default `0.1.13.post3` for
+All build commands accept `--tvm-ffi-version` (default `0.1.12` for
 compatibility); Python build/publication functions accept `tvm_ffi=...`.
 For example, add `--tvm-ffi-version 0.1.9` for a runtime pinned to 0.1.9.
 The source package must supply headers and a library for the requested version.
