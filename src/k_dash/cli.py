@@ -75,6 +75,8 @@ def _parser() -> argparse.ArgumentParser:
     addition.add_argument("--aot-args", required=True, type=_path)
     addition.add_argument("--builder-image", default=DEFAULT_BUILDER_IMAGE)
     addition.add_argument("--tvm-ffi-version", default=DEFAULT_TVM_FFI_VERSION)
+    addition.add_argument("--backend", choices=["docker", "nix"], default="docker",
+                          help="nix requires an already isolated CI container (Nix sandbox disabled)")
 
     cache = subcommands.add_parser("cache", help="inspect or maintain local cache")
     cache_subcommands = cache.add_subparsers(dest="cache_command", required=True)
@@ -138,6 +140,7 @@ def _run(args: argparse.Namespace) -> Any:
         return publish_build(
             Path.cwd(), version=args.version, cuda=args.cuda_version, cc=args.cc,
             args_file=args.aot_args, builder_image=args.builder_image, tvm_ffi=args.tvm_ffi_version,
+            backend=args.backend,
         )
     cache = Cache()
     if args.cache_command == "info":

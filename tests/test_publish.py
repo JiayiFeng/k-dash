@@ -30,7 +30,8 @@ def test_immutable_version_conflicts_but_dev_can_move() -> None:
     _check_release_binding(_Client(old), "dev-main", new)
 
 
-def test_publish_build_detects_dev_version_move(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("backend", ["docker", "nix"])
+def test_publish_build_detects_dev_version_move(tmp_path: Path, monkeypatch, backend) -> None:
     args = tmp_path / "args.json"
     args.write_text("{}")
     old = "sha256:" + "1" * 64
@@ -49,6 +50,7 @@ def test_publish_build_detects_dev_version_move(tmp_path: Path, monkeypatch) -> 
     )
     monkeypatch.setattr("k_dash.publish.extract_source_archive", lambda _, path: path.mkdir(parents=True))
     monkeypatch.setattr("k_dash.publish.docker_aot", lambda *_args, **_kwargs: (b"ELF", {"mode": "test"}))
+    monkeypatch.setattr("k_dash.publish.nix_aot", lambda *_args, **_kwargs: (b"ELF", {"mode": "test"}))
     monkeypatch.setattr(
         "k_dash.publish.build_objects",
         lambda *_args, **_kwargs: ({}, b"{}", b"layer", b"manifest", "sha256:" + "3" * 64),
@@ -63,6 +65,7 @@ def test_publish_build_detects_dev_version_move(tmp_path: Path, monkeypatch) -> 
             cuda="12.8",
             cc="sm_90a",
             args_file=args,
+            backend=backend,
         )
 
 
@@ -222,3 +225,97 @@ def test_multiple_cuda_targets_publish_two_binaries_and_one_release(tmp_path, mo
     assert len(events) == 5
     assert all(tag.startswith('build-') for _, tag in events[2:4])
     assert events[-1] == ('push', 'release-v0.1.0')
+
+
+@pytest.mark.parametrize('backend', [None, 'nix'])
+@pytest.mark.parametrize('failure', [None, 'build', 'validation', 'conflict'])
+def test_publish_build_uses_published_source_and_never_pushes_release(tmp_path, monkeypatch, backend, failure):
+    from k_dash.canonical import digest_bytes
+    from k_dash.errors import KDashError
+    from k_dash.project import release_objects
+    from k_dash.templates import init_project
+
+    root = tmp_path / 'kernel'
+    init_project('owner/kernel', root, 'cpp', None)
+    config, _, archive, _, release_digest = release_objects(root, 'v0.1.1')
+    original = (root / 'src/kernel.cu').read_text()
+    (root / 'src/kernel.cu').write_text('// unpublished local modification')
+    args = tmp_path / 'args.json'
+    args.write_text('{}')
+    registry = _registry('primary', True)
+    monkeypatch.setenv('K_DASH_CACHE_DIR', str(tmp_path / 'cache'))
+    monkeypatch.setattr('k_dash.publish.load_registry_set', lambda: RegistrySet((registry,)))
+    monkeypatch.setattr('k_dash.publish.resolve_release', lambda *_: (release_digest, registry))
+    monkeypatch.setattr('k_dash.publish.pull_release', lambda *_: SimpleNamespace(config=config, layers=(archive,)))
+    events = []
+
+    def build(source, spec, **kwargs):
+        events.append('build')
+        assert (source / 'src/kernel.cu').read_text() == original
+        assert spec.release_digest == release_digest
+        assert spec.target['tvm_ffi'] == '0.1.12'
+        assert spec.target['cuda'] == '13.0'
+        assert spec.target['cc'] == 'sm_90a'
+        assert kwargs == ({} if backend == 'nix' else {'builder_image': 'test-builder'})
+        if failure == 'build':
+            raise KDashError('build failed', stage='test')
+        return b'ELF', {'mode': backend or 'docker'}
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('wrong backend called')
+
+    monkeypatch.setattr('k_dash.publish.nix_aot', build if backend == 'nix' else forbidden)
+    monkeypatch.setattr('k_dash.publish.docker_aot', forbidden if backend == 'nix' else build)
+    monkeypatch.setattr('k_dash.publish.infer_host_dependencies', lambda _: [])
+    monkeypatch.setattr('k_dash.publish.cxx_runtime_requirement', lambda _: None)
+
+    def validate(*_):
+        events.append('validate')
+        if failure == 'validation':
+            raise KDashError('validation failed', stage='test')
+
+    monkeypatch.setattr('k_dash.publish.validate_kernel_so', validate)
+
+    class Client:
+        def __init__(self, *_): pass
+        def get_manifest(self, reference):
+            assert reference.startswith('build-sha256-')
+            if failure == 'conflict':
+                return 'sha256:' + 'f' * 64, b'{}', {}
+            raise ArtifactNotFound('missing', stage='test')
+        def push(self, reference, config, layers, manifest):
+            assert events == ['build', 'validate']
+            assert reference.startswith('build-sha256-')
+            events.append('push')
+            return digest_bytes(manifest)
+
+    monkeypatch.setattr('k_dash.publish.OCIClient', Client)
+    options = {} if backend is None else {'backend': backend}
+    if failure:
+        with pytest.raises(KDashError):
+            publish_build(root, version='v0.1.1', cuda='13.0', cc='sm_90a',
+                          tvm_ffi='0.1.12', args_file=args, builder_image='test-builder', **options)
+        assert 'push' not in events
+    else:
+        result = publish_build(root, version='v0.1.1', cuda='13.0', cc='sm_90a',
+                               tvm_ffi='0.1.12', args_file=args, builder_image='test-builder', **options)
+        assert result['release_digest'] == release_digest
+        assert events == ['build', 'validate', 'push']
+
+
+def test_publish_build_rejects_invalid_backend_before_io(tmp_path):
+    from k_dash.errors import ContractError
+    with pytest.raises(ContractError, match='unsupported AOT backend'):
+        publish_build(tmp_path, version='v1', cuda='13.0', cc='sm_90a',
+                      args_file=tmp_path / 'missing.json', backend='invalid')
+
+
+@pytest.mark.parametrize('backend', [None, 'docker', 'nix'])
+def test_publish_build_cli_forwards_backend(monkeypatch, backend):
+    from k_dash.cli import _parser, _run
+    argv = ['publish-build', '--version', 'v1', '--cuda-version', '13.0',
+            '--cc', 'sm_90a', '--aot-args', 'args.json']
+    if backend is not None:
+        argv += ['--backend', backend]
+    monkeypatch.setattr('k_dash.cli.publish_build', lambda root, **kwargs: kwargs)
+    assert _run(_parser().parse_args(argv))['backend'] == (backend or 'docker')

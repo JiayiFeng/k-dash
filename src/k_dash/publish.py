@@ -215,7 +215,10 @@ def publish_build(
     args_file: Path,
     builder_image: str = DEFAULT_BUILDER_IMAGE,
     tvm_ffi: str = DEFAULT_TVM_FFI_VERSION,
+    backend: str = "docker",
 ) -> dict[str, Any]:
+    if backend not in {"docker", "nix"}:
+        raise ContractError("unsupported AOT backend", stage="publish-build", context={"backend": backend})
     version = validate_version(version)
     project, _ = load_project(root)
     registries = load_registry_set()
@@ -231,7 +234,10 @@ def publish_build(
     with tempfile.TemporaryDirectory(prefix="k-dash-publish-build-") as temporary:
         source = Path(temporary) / "source"
         extract_source_archive(release.layers[0], source)
-        kernel_so, provenance = docker_aot(source, spec, builder_image=builder_image)
+        if backend == "nix":
+            kernel_so, provenance = nix_aot(source, spec)
+        else:
+            kernel_so, provenance = docker_aot(source, spec, builder_image=builder_image)
     config, config_bytes, layer, manifest_bytes, expected = build_objects(
         spec,
         kernel_so,

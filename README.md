@@ -33,6 +33,21 @@ provide isolation. It uses the same frozen release source, locked dependencies,
 BuildSpec and binary validation as Docker AOT. Docker remains the default.
 Registry credentials are not forwarded to the Nix build subprocess environment.
 
+`publish-build` also accepts `--backend nix` to add an AOT binary to an existing
+release without Docker. It builds the source downloaded from that release, not
+the local working tree, and leaves the release unchanged. For example, from the
+kernel project directory:
+
+```bash
+k-dash publish-build --version v0.1.1 --cuda-version 13.0 --cc sm_90a \
+  --tvm-ffi-version 0.1.12 --aot-args args.json --backend nix
+```
+
+Docker remains the default backend; the same isolated-container requirement
+applies to Nix for both publishing commands.
+The published release's build recipe must already support the requested target
+and TVM-FFI version. If the recipe needs changes, publish a new release instead.
+
 ## Releasing to PyPI
 
 Package versions come from `git describe` through `hatch-vcs`. An exact tag such
